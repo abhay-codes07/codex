@@ -345,6 +345,9 @@ impl ChatWidget {
         else {
             return;
         };
+        // A shell command may have changed the terminal title; re-assert the
+        // managed title so external activity does not leave it clobbered.
+        self.reassert_terminal_title();
         let event_command = split_command_string(&command);
         let event_parsed = command_actions
             .into_iter()

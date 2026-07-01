@@ -291,6 +291,23 @@ impl ChatWidget {
         self.refresh_terminal_title_from_selections(&selections);
     }
 
+    /// Re-emits the managed terminal title after external activity may have
+    /// overwritten it.
+    ///
+    /// Shell commands, MCP servers, and other child processes can change the
+    /// visible terminal title. Codex caches the last title it wrote and skips
+    /// redundant writes, so once external activity clobbers the title the
+    /// computed value still matches the cache and the title is never restored.
+    /// Dropping the cache forces the next refresh to write even when the value
+    /// is unchanged. This is a no-op when Codex is not managing the title.
+    pub(crate) fn reassert_terminal_title(&mut self) {
+        if self.last_terminal_title.is_none() {
+            return;
+        }
+        self.last_terminal_title = None;
+        self.refresh_terminal_title();
+    }
+
     fn terminal_title_requires_action(&self) -> bool {
         self.bottom_pane.terminal_title_requires_action()
     }

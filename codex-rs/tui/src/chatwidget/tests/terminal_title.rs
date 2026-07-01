@@ -75,6 +75,49 @@ async fn terminal_title_action_required_respects_spinner_setting() {
 }
 
 #[tokio::test]
+async fn reassert_terminal_title_re_emits_after_external_overwrite() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_terminal_title = Some(vec!["project".to_string()]);
+    chat.refresh_terminal_title();
+    let managed = chat
+        .last_terminal_title
+        .clone()
+        .expect("terminal title should be managed");
+
+    // Simulate an external process (shell/MCP) overwriting the visible title.
+    // `set_terminal_title` is a no-op off a real tty, so we corrupt the cache
+    // directly to make the effect of re-assertion observable in the test.
+    chat.last_terminal_title = Some("external-title".to_string());
+
+    chat.reassert_terminal_title();
+
+    assert_eq!(chat.last_terminal_title, Some(managed));
+}
+
+#[tokio::test]
+async fn terminal_title_reasserted_after_command_execution_completes() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_terminal_title = Some(vec!["project".to_string()]);
+    chat.refresh_terminal_title();
+    let managed = chat
+        .last_terminal_title
+        .clone()
+        .expect("terminal title should be managed");
+
+    chat.last_terminal_title = Some("external-title".to_string());
+
+    let begin = begin_exec_with_source(
+        &mut chat,
+        "call-reassert",
+        "echo hi",
+        ExecCommandSource::UserShell,
+    );
+    end_exec(&mut chat, begin, "hi\n", "", 0);
+
+    assert_eq!(chat.last_terminal_title, Some(managed));
+}
+
+#[tokio::test]
 async fn terminal_title_action_required_blinks_when_animations_are_enabled() {
     let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.bottom_pane.set_task_running(/*running*/ true);

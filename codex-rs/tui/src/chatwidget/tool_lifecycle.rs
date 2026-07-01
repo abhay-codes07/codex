@@ -210,6 +210,9 @@ impl ChatWidget {
         else {
             return;
         };
+        // MCP servers can change the terminal title; re-assert the managed
+        // title so external activity does not leave it clobbered.
+        self.reassert_terminal_title();
         let invocation = McpInvocation {
             server,
             tool,
