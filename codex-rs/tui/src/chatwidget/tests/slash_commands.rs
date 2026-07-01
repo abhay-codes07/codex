@@ -2656,6 +2656,59 @@ async fn fast_slash_command_updates_and_persists_local_service_tier() {
 }
 
 #[tokio::test]
+async fn service_tier_command_args_set_clear_and_report_tier() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
+    set_fast_mode_test_catalog(&mut chat);
+    chat.set_feature_enabled(Feature::FastMode, /*enabled*/ true);
+    let command = fast_tier_command();
+
+    chat.handle_service_tier_command_with_args_dispatch(command.clone(), "on".to_string());
+    assert_eq!(
+        chat.current_service_tier(),
+        Some(ServiceTier::Fast.request_value())
+    );
+
+    chat.handle_service_tier_command_with_args_dispatch(command.clone(), "off".to_string());
+    assert_eq!(
+        chat.current_service_tier(),
+        Some(SERVICE_TIER_DEFAULT_REQUEST_VALUE)
+    );
+
+    // `status` reports the current state without changing the tier.
+    chat.handle_service_tier_command_with_args_dispatch(command, "status".to_string());
+    assert_eq!(
+        chat.current_service_tier(),
+        Some(SERVICE_TIER_DEFAULT_REQUEST_VALUE)
+    );
+}
+
+#[tokio::test]
+async fn fast_slash_command_with_off_arg_is_handled_not_sent_to_chat() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
+    set_fast_mode_test_catalog(&mut chat);
+    chat.set_feature_enabled(Feature::FastMode, /*enabled*/ true);
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    submit_composer_text(&mut chat, "/fast off");
+
+    // The buggy behavior sent `/fast off` to the model as chat, which would not
+    // emit a service-tier override. Seeing the override proves it was handled as
+    // a command and reset the tier to the default.
+    let events = std::iter::from_fn(|| rx.try_recv().ok()).collect::<Vec<_>>();
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AppEvent::CodexOp(Op::OverrideTurnContext {
+                service_tier: Some(Some(service_tier)),
+                ..
+            }) if service_tier == SERVICE_TIER_DEFAULT_REQUEST_VALUE
+        )),
+        "expected /fast off to reset the service tier as a command; events: {events:?}"
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+}
+
+#[tokio::test]
 async fn fast_keybinding_toggle_uses_same_events_as_fast_slash_command() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.4")).await;
     set_fast_mode_test_catalog(&mut chat);

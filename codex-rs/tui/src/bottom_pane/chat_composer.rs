@@ -295,6 +295,9 @@ pub enum InputResult {
     /// command-history entry still represents the original command invocation that should be
     /// committed only if dispatch accepts it.
     CommandWithArgs(SlashCommand, String, Vec<TextElement>),
+    /// An inline model service-tier command (for example `/fast off`) and its
+    /// trimmed argument text.
+    ServiceTierCommandWithArgs(ServiceTierCommand, String, Vec<TextElement>),
     None,
 }
 
@@ -2749,6 +2752,7 @@ impl ChatComposer {
                 | InputResult::Command(_)
                 | InputResult::ServiceTierCommand(_)
                 | InputResult::CommandWithArgs(_, _, _)
+                | InputResult::ServiceTierCommandWithArgs(_, _, _)
         ) {
             self.draft.textarea.enter_vim_normal_mode();
         }
@@ -2934,8 +2938,15 @@ impl ChatComposer {
         );
         let trimmed_rest = inline_command.rest.trim();
         args_elements = Self::trim_text_elements(inline_command.rest, trimmed_rest, args_elements);
-        let SlashCommandItem::Builtin(cmd) = command else {
-            return None;
+        let cmd = match command {
+            SlashCommandItem::Builtin(cmd) => cmd,
+            SlashCommandItem::ServiceTier(command) => {
+                return Some(InputResult::ServiceTierCommandWithArgs(
+                    command,
+                    trimmed_rest.to_string(),
+                    args_elements,
+                ));
+            }
         };
         Some(InputResult::CommandWithArgs(
             cmd,
@@ -8221,6 +8232,9 @@ mod tests {
             InputResult::ServiceTierCommand(command) => {
                 panic!("expected init command, got service tier {command:?}")
             }
+            InputResult::ServiceTierCommandWithArgs(command, _, _) => {
+                panic!("expected init command, got service tier with args {command:?}")
+            }
             InputResult::Submitted { text, .. } => {
                 panic!("expected command dispatch, but composer submitted literal text: {text}")
             }
@@ -8728,6 +8742,9 @@ mod tests {
             InputResult::ServiceTierCommand(command) => {
                 panic!("expected diff command, got service tier {command:?}")
             }
+            InputResult::ServiceTierCommandWithArgs(command, _, _) => {
+                panic!("expected diff command, got service tier with args {command:?}")
+            }
             InputResult::Submitted { text, .. } => {
                 panic!("expected command dispatch after Tab completion, got literal submit: {text}")
             }
@@ -8924,6 +8941,9 @@ mod tests {
             }
             InputResult::ServiceTierCommand(command) => {
                 panic!("expected mention command, got service tier {command:?}")
+            }
+            InputResult::ServiceTierCommandWithArgs(command, _, _) => {
+                panic!("expected mention command, got service tier with args {command:?}")
             }
             InputResult::Submitted { text, .. } => {
                 panic!("expected command dispatch, but composer submitted literal text: {text}")

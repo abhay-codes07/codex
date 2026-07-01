@@ -62,6 +62,9 @@ impl ChatWidget {
             InputResult::CommandWithArgs(cmd, args, text_elements) => {
                 self.handle_slash_command_with_args_dispatch(cmd, args, text_elements);
             }
+            InputResult::ServiceTierCommandWithArgs(command, args, _text_elements) => {
+                self.handle_service_tier_command_with_args_dispatch(command, args);
+            }
             InputResult::None => {}
         }
         if had_modal_or_popup && self.bottom_pane.no_modal_or_popup_active() {

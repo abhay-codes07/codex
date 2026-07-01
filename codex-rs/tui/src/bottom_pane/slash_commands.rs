@@ -34,7 +34,8 @@ impl SlashCommandItem {
     pub(crate) fn supports_inline_args(&self) -> bool {
         match self {
             Self::Builtin(cmd) => cmd.supports_inline_args(),
-            Self::ServiceTier(_) => false,
+            // Service-tier commands accept `on`, `off`, and `status` arguments.
+            Self::ServiceTier(_) => true,
         }
     }
 

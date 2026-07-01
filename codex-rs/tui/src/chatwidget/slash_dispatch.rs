@@ -6,6 +6,8 @@
 //! slash-command recall follows the same submitted-input rule as ordinary text.
 
 use super::*;
+use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
+
 use crate::app_event::ThreadGoalSetMode;
 use crate::bottom_pane::prompt_args::parse_slash_name;
 use crate::bottom_pane::slash_commands::BuiltinCommandFlags;
@@ -63,6 +65,48 @@ impl ChatWidget {
             return;
         }
         self.toggle_service_tier_from_ui(command);
+        self.bottom_pane.record_pending_slash_command_history();
+    }
+
+    /// Dispatch a service-tier command that carries an `on`, `off`, or `status`
+    /// argument (for example `/fast off`). Unlike the bare command, which
+    /// toggles, the arguments set the tier explicitly so the outcome is
+    /// predictable regardless of the current state.
+    pub(super) fn handle_service_tier_command_with_args_dispatch(
+        &mut self,
+        command: ServiceTierCommand,
+        args: String,
+    ) {
+        if self.active_side_conversation {
+            self.add_error_message(format!(
+                "'/{}' is unavailable in side conversations. {SIDE_SLASH_COMMAND_UNAVAILABLE_HINT}",
+                command.name
+            ));
+            self.bottom_pane.drain_pending_submission_state();
+            self.bottom_pane.record_pending_slash_command_history();
+            return;
+        }
+        match args.trim().to_ascii_lowercase().as_str() {
+            "on" | "enable" => {
+                self.set_service_tier_selection(Some(command.id));
+            }
+            "off" | "disable" => {
+                self.set_service_tier_selection(Some(
+                    SERVICE_TIER_DEFAULT_REQUEST_VALUE.to_string(),
+                ));
+            }
+            "status" => {
+                let enabled = self.current_service_tier() == Some(command.id.as_str());
+                let state = if enabled { "on" } else { "off" };
+                self.add_info_message(format!("/{} is {state}.", command.name), /*hint*/ None);
+            }
+            other => {
+                self.add_error_message(format!(
+                    "Usage: /{} [on|off|status] (got '{other}')",
+                    command.name
+                ));
+            }
+        }
         self.bottom_pane.record_pending_slash_command_history();
     }
 
@@ -971,15 +1015,15 @@ impl ChatWidget {
             });
             return QueueDrain::Stop;
         }
-        let SlashCommandItem::Builtin(cmd) = command else {
-            self.submit_user_message(UserMessage {
-                text,
-                local_images,
-                remote_image_urls,
-                text_elements,
-                mention_bindings,
-            });
-            return QueueDrain::Stop;
+        let cmd = match command {
+            SlashCommandItem::Builtin(cmd) => cmd,
+            SlashCommandItem::ServiceTier(command) => {
+                self.handle_service_tier_command_with_args_dispatch(
+                    command,
+                    rest.trim().to_string(),
+                );
+                return QueueDrain::Continue;
+            }
         };
 
         let trimmed_start = rest.trim_start();
