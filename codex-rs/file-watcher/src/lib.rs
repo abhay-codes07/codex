@@ -379,9 +379,19 @@ impl FileWatcher {
     pub fn new() -> notify::Result<Self> {
         let (raw_tx, raw_rx) = mpsc::unbounded_channel();
         let raw_tx_clone = raw_tx;
-        let watcher = notify::recommended_watcher(move |res| {
-            let _ = raw_tx_clone.send(res);
-        })?;
+        // Do not follow directory symlinks. `notify` defaults `follow_symlinks`
+        // to true, so a recursive watch on a small root can traverse into a
+        // symlink target that points at a huge external tree (for example a Nix
+        // store closure under a project skill root), spinning the inotify loop.
+        // The skill loader still resolves symlinks itself; only the watcher is
+        // constrained here.
+        let config = notify::Config::default().with_follow_symlinks(false);
+        let watcher = RecommendedWatcher::new(
+            move |res| {
+                let _ = raw_tx_clone.send(res);
+            },
+            config,
+        )?;
         let inner = FileWatcherInner {
             watcher,
             watched_paths: HashMap::new(),
