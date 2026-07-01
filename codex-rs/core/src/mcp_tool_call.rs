@@ -272,6 +272,19 @@ pub(crate) async fn handle_mcp_tool_call(
                 )
                 .await
             }
+            McpToolApprovalDecision::Unavailable => {
+                let message = "MCP tool call requires approval, but no approval was provided and this session cannot prompt for one (for example, non-interactive `codex exec`). Pre-approve the tool with an approval mode such as `default_tools_approval_mode`, or run Codex interactively.".to_string();
+                notify_mcp_tool_call_skip(
+                    sess.as_ref(),
+                    turn_context.as_ref(),
+                    &call_id,
+                    invocation,
+                    item_metadata.clone(),
+                    message,
+                    /*already_started*/ true,
+                )
+                .await
+            }
         };
 
         let status = if result.is_ok() { "ok" } else { "error" };
@@ -984,8 +997,15 @@ enum McpToolApprovalDecision {
     Accept,
     AcceptForSession,
     AcceptAndRemember,
-    Decline { message: Option<String> },
+    Decline {
+        message: Option<String>,
+    },
     Cancel,
+    /// Approval was required but could not be requested because the session has
+    /// no interactive surface to ask on (for example, non-interactive
+    /// `codex exec`). Distinct from `Cancel`, which means the user was asked and
+    /// cancelled.
+    Unavailable,
 }
 
 pub(crate) struct McpToolApprovalMetadata {
@@ -1865,7 +1885,10 @@ fn parse_mcp_tool_approval_response(
     question_id: &str,
 ) -> McpToolApprovalDecision {
     let Some(response) = response else {
-        return McpToolApprovalDecision::Cancel;
+        // A missing response means approval could not be surfaced at all (for
+        // example, non-interactive `codex exec` has no way to prompt). That is
+        // not the same as the user cancelling an approval they were shown.
+        return McpToolApprovalDecision::Unavailable;
     };
     let answers = response
         .answers
@@ -1947,7 +1970,8 @@ async fn apply_mcp_tool_approval_decision(
         }
         McpToolApprovalDecision::Accept
         | McpToolApprovalDecision::Decline { .. }
-        | McpToolApprovalDecision::Cancel => {}
+        | McpToolApprovalDecision::Cancel
+        | McpToolApprovalDecision::Unavailable => {}
     }
 }
 

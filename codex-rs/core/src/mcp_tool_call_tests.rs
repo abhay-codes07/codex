@@ -1995,6 +1995,16 @@ fn synthetic_decline_request_user_input_response_stays_decline() {
 }
 
 #[test]
+fn missing_user_input_response_reports_approval_unavailable() {
+    // A non-interactive session (for example `codex exec`) has no way to prompt,
+    // so `request_user_input` yields no response. That must be reported as
+    // "unavailable", not as a user cancellation.
+    let response = parse_mcp_tool_approval_response(None, "approval");
+
+    assert_eq!(response, McpToolApprovalDecision::Unavailable);
+}
+
+#[test]
 fn accepted_elicitation_response_uses_always_persist_meta() {
     let response = parse_mcp_tool_approval_elicitation_response(
         Some(ElicitationResponse {
